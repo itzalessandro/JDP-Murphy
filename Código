@@ -1,0 +1,187 @@
+#include <Servo.h> // Incluimos la librería Servo
+Servo myservo; // Instanciamos el objeto servo
+
+// Definición de pines EnA y EnB para el control de la velocidad
+int VelocidadMotor1 = 22; 
+int VelocidadMotor2 = 24;
+
+// Definición de pines del sensor de distancia y variables para el cálculo de la distancia
+int echoPin = 2; 
+int trigPin = 3; 
+long duration; 
+int distance; 
+
+// Definición de los pines de control de giro de los motores In1, In2, In3 e In4
+int Motor1A = 13; 
+int Motor1B = 12;  
+int Motor2C = 8; 
+int Motor2D = 10; 
+
+// Variables de control para la posición del servo y observaciones
+int servoPos = 0;
+int servoReadLeft = 0;
+int servoReadRight = 0;
+
+// Pines del sensor de color TCS230
+int s0 = 7;
+int s1 = 6;
+int s2 = 4;
+int s3 = 5;
+int sensorOut = 9;
+int frequency = 0;
+
+void setup() {
+  delay(1000);
+
+  // Vinculamos el pin digital 9 al servo instanciado arriba
+  myservo.attach(9);
+
+  // Establecemos el modo de los pines del sensor de ultrasonidos
+  pinMode(trigPin, OUTPUT); 
+  pinMode(echoPin, INPUT); 
+
+  // Establecemos el modo de los pines del control de motores
+  pinMode(Motor1A,OUTPUT);
+  pinMode(Motor1B,OUTPUT);
+  pinMode(Motor2C,OUTPUT);
+  pinMode(Motor2D,OUTPUT);
+  pinMode(VelocidadMotor1, OUTPUT);
+  pinMode(VelocidadMotor2, OUTPUT);
+
+  // Pines del sensor de color
+  pinMode(s0, OUTPUT);
+  pinMode(s1, OUTPUT);
+  pinMode(s2, OUTPUT);
+  pinMode(s3, OUTPUT);
+  pinMode(sensorOut, INPUT);
+
+  // Configuramos la frecuencia del sensor de color TCS230
+  digitalWrite(s0,HIGH);
+  digitalWrite(s1,LOW);
+
+  // Configuramos la velocidad de los dos motores
+  analogWrite(VelocidadMotor1, 80); 
+  analogWrite(VelocidadMotor2, 80);  
+
+  myservo.write(90); 
+  Serial.begin(9600);
+}
+
+void loop() {
+  delay(50); 
+
+  // Medición de distancia
+  distance = medirDistancia();
+  Serial.println(distance);
+
+  // Medición del color
+  int redFrequency = medirColor(LOW, LOW);   // Rojo
+  int greenFrequency = medirColor(HIGH, HIGH); // Verde
+  int blueFrequency = medirColor(LOW, HIGH); // Azul
+
+  Serial.print("Red: ");
+  Serial.println(redFrequency);
+  Serial.print("Green: ");
+  Serial.println(greenFrequency);
+  Serial.print("Blue: ");
+  Serial.println(blueFrequency);
+
+  // Aquí puedes añadir la lógica para tomar decisiones basadas en el color
+  // Por ejemplo, detener el carro si se detecta un color específico
+  if (redFrequency < greenFrequency && redFrequency < blueFrequency) {
+    Serial.println("Detectado Rojo, detener el carro");
+    stopCar();
+  } else if (greenFrequency < redFrequency && greenFrequency < blueFrequency) {
+    Serial.println("Detectado Verde, continuar recto");
+    moveForwardCar();
+  } else if (blueFrequency < redFrequency && blueFrequency < greenFrequency) {
+    Serial.println("Detectado Azul, girar a la izquierda");
+    turnLeftCar();
+  }
+
+  if(distance < 15){
+    stopCar();
+    
+    // Miramos a la derecha    
+    myservo.write(10);  
+    delay(600); 
+    servoReadRight = medirDistancia();
+
+    // Miramos a la izquierda                             
+    myservo.write(170);  
+    delay(600); 
+    servoReadLeft = medirDistancia();
+
+    // Miramos de frente 
+    myservo.write(90);  
+    delay(600); 
+
+    if(servoReadLeft > servoReadRight){
+      Serial.println("Giro izquierda");
+      turnLeftCar();
+    } else {
+      Serial.println("Giro derecha");
+      turnRightCar(); 
+    }
+  } else if(distance > 15){
+    Serial.println("Recto");
+    moveForwardCar();
+  }
+}
+
+void stopCar(){
+  // Paramos el carrito
+  digitalWrite(Motor1A, HIGH);
+  digitalWrite(Motor1B, HIGH);                       
+  digitalWrite(Motor2C, HIGH);
+  digitalWrite(Motor2D, HIGH); 
+}
+
+void turnRightCar(){
+  // Configuramos el sentido de giro para girar a la derecha
+  digitalWrite(Motor1A, HIGH);
+  digitalWrite(Motor1B, LOW);
+  digitalWrite(Motor2C, LOW);
+  digitalWrite(Motor2D, HIGH);
+  delay(250);
+}
+
+void turnLeftCar(){
+  // Configuramos el sentido de giro para girar a la izquierda
+  digitalWrite(Motor1A, LOW);
+  digitalWrite(Motor1B, HIGH);
+  digitalWrite(Motor2C, HIGH);
+  digitalWrite(Motor2D, LOW);
+  delay(250);
+}
+
+void moveForwardCar(){
+  // Configuramos el sentido de giro para avanzar
+  digitalWrite(Motor1A, HIGH);
+  digitalWrite(Motor1B, LOW);                       
+  digitalWrite(Motor2C, HIGH);
+  digitalWrite(Motor2D, LOW); 
+}
+
+int medirDistancia(){
+  // Lanzamos pulso de sonido
+  digitalWrite(trigPin, LOW);
+  delayMicroseconds(2);
+  digitalWrite(trigPin, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(trigPin, LOW);
+  
+  // Leemos lo que tarda el pulso en llegar al sensor y calculamos la distancia
+  duration = pulseIn(echoPin, HIGH);
+  distance = duration * 0.034 / 2;
+
+  // Devolver la distancia calculada
+  return distance;    
+}
+
+int medirColor(int s2State, int s3State) {
+  digitalWrite(s2, s2State);
+  digitalWrite(s3, s3State);
+  frequency = pulseIn(sensorOut, LOW);
+  return frequency;
+}
