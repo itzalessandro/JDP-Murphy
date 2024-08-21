@@ -1,0 +1,184 @@
+#include <Servo.h> // Incluimos la librería Servo
+
+// Instanciamos el objeto servo (si lo necesitas para algo)
+Servo myservo;
+
+// Definición de pines del puente H L298N para el control de los motores
+int Motor1A = 13; 
+int Motor1B = 12;  
+int Motor2C = 8; 
+int Motor2D = 11;
+
+// Definición de pines del sensor de distancia ultrasónico
+int echoPin = 2; 
+int trigPin = 3; 
+long duration; 
+int distance;
+
+// Pines del sensor de color TCS230
+int s0 = 7;
+int s1 = 6;
+int s2 = 4;
+int s3 = 5;
+int sensorOut = 9;
+
+// Variables para almacenar los valores base de calibración del sensor de color
+int redBase, greenBase, blueBase;
+
+// Umbral para decidir si las lecturas son demasiado cercanas
+int umbral = 20;
+
+void setup() {
+  // Configuramos los pines del puente H
+  pinMode(Motor1A, OUTPUT);
+  pinMode(Motor1B, OUTPUT);
+  pinMode(Motor2C, OUTPUT);
+  pinMode(Motor2D, OUTPUT);
+
+  // Configuramos los pines del sensor ultrasónico
+  pinMode(trigPin, OUTPUT);
+  pinMode(echoPin, INPUT);
+
+  // Configuramos los pines del sensor de color
+  pinMode(s0, OUTPUT);
+  pinMode(s1, OUTPUT);
+  pinMode(s2, OUTPUT);
+  pinMode(s3, OUTPUT);
+  pinMode(sensorOut, INPUT);
+
+  // Configuramos la frecuencia del sensor de color TCS230
+  digitalWrite(s0, HIGH);
+  digitalWrite(s1, LOW);
+
+  Serial.begin(9600);
+
+  // Calibrar el sensor de color
+  calibrarSensor();
+}
+
+void loop() {
+  // Medición de distancia
+  distance = medirDistancia();
+  Serial.print("Distancia: ");
+  Serial.println(distance);
+
+  // Si detectamos una pared a menos de 15 cm, giramos a la derecha
+  if (distance < 15) {
+    Serial.println("Pared detectada cerca, girar a la derecha");
+    stopCar(); // Detenemos el carrito antes de girar
+    turnRightCar();
+    delay(500); // Tiempo para completar el giro
+    return; // Regresamos al principio del loop para evitar hacer otras acciones
+  }
+
+  // Medición del color calibrado
+  int redFrequency = medirColorCalibrado(LOW, LOW);   // Rojo
+  int greenFrequency = medirColorCalibrado(HIGH, HIGH); // Verde
+  int blueFrequency = medirColorCalibrado(LOW, HIGH); // Azul
+
+  // Imprimir frecuencias para diagnóstico
+  Serial.print("Red: ");
+  Serial.println(redFrequency);
+  Serial.print("Green: ");
+  Serial.println(greenFrequency);
+  Serial.print("Blue: ");
+  Serial.println(blueFrequency);
+
+  // Lógica para decidir la acción basada en el color detectado
+  if (redFrequency < greenFrequency && redFrequency < blueFrequency) {
+    Serial.println("Detectado Rojo, girar a la derecha");
+    turnRightCar();
+  } else if (greenFrequency < redFrequency && greenFrequency < blueFrequency) {
+    Serial.println("Detectado Verde, girar a la izquierda");
+    stopCar();
+  } else if (blueFrequency < redFrequency && blueFrequency < greenFrequency) {
+    Serial.println("Detectado Azul, detener");
+    turnLeftCar();
+  } else {
+    // Si el color no es ninguno de los especificados, continuar recto
+    Serial.println("Color no reconocido, continuar recto");
+    moveForwardCar();
+  }
+
+  delay(100); // Esperar un momento antes de la siguiente lectura
+}
+
+void moveForwardCar(){
+  // Configuramos el sentido de giro para avanzar
+  digitalWrite(Motor1A, HIGH);
+  digitalWrite(Motor1B, HIGH);                       
+  digitalWrite(Motor2C, HIGH);
+  digitalWrite(Motor2D, HIGH); 
+}
+
+
+
+void turnRightCar(){
+  // Configuramos el sentido de giro para girar a la derecha
+  digitalWrite(Motor1A, HIGH);
+  digitalWrite(Motor1B, LOW);
+  digitalWrite(Motor2C, LOW);
+  digitalWrite(Motor2D, HIGH);
+}
+
+void turnLeftCar(){
+  // Configuramos el sentido de giro para girar a la izquierda
+  digitalWrite(Motor1A, LOW);
+  digitalWrite(Motor1B, HIGH);
+  digitalWrite(Motor2C, HIGH);
+  digitalWrite(Motor2D, LOW);
+}
+
+void stopCar(){
+  // Paramos el carrito
+  digitalWrite(Motor1A, LOW);
+  digitalWrite(Motor1B, LOW);                       
+  digitalWrite(Motor2C, LOW);
+  digitalWrite(Motor2D, LOW); 
+}
+
+int medirDistancia(){
+  // Lanzamos pulso de sonido
+  digitalWrite(trigPin, LOW);
+  delayMicroseconds(2);
+  digitalWrite(trigPin, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(trigPin, LOW);
+  
+  // Leemos lo que tarda el pulso en llegar al sensor y calculamos la distancia
+  duration = pulseIn(echoPin, HIGH);
+  distance = duration * 0.034 / 2;
+
+  // Devolver la distancia calculada
+  return distance;    
+}
+
+int medirColor(int s2State, int s3State) {
+  digitalWrite(s2, s2State);
+  digitalWrite(s3, s3State);
+  return pulseIn(sensorOut, LOW);
+}
+
+int medirColorCalibrado(int s2State, int s3State) {
+  int rawFrequency = medirColor(s2State, s3State);
+  if (s2State == LOW && s3State == LOW) {
+    return rawFrequency - redBase; // Rojo
+  } else if (s2State == HIGH && s3State == HIGH) {
+    return rawFrequency - greenBase; // Verde
+  } else if (s2State == LOW && s3State == HIGH) {
+    return rawFrequency - blueBase; // Azul
+  }
+  return 0; // Retorna 0 si el estado no coincide con ninguno de los colores conocidos
+}
+
+void calibrarSensor() {
+  // Obtener lecturas de fondo (sin objeto)
+  redBase = medirColor(LOW, LOW);
+  greenBase = medirColor(HIGH, HIGH);
+  blueBase = medirColor(LOW, HIGH);
+
+  Serial.print("Calibración Completa - Valores Base: ");
+  Serial.print("Rojo: "); Serial.print(redBase);
+  Serial.print(", Verde: "); Serial.print(greenBase);
+  Serial.print(", Azul: "); Serial.println(blueBase);
+}
